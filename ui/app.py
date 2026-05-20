@@ -1,6 +1,5 @@
 import gradio as gr
 import requests
-import json
 
 BACKEND_URL = "http://localhost:8000/predict"
 
@@ -9,22 +8,13 @@ BACKEND_URL = "http://localhost:8000/predict"
 # ──────────────────────────────────────────────
 
 def chat(user_message: str, history: list):
-    """Envía el mensaje al backend y devuelve la respuesta."""
-
     if not user_message.strip():
         return history, "", "⚠️ Escribe un mensaje antes de enviar."
 
-    # Formatear historial para el backend
-    formatted_history = [
-        {"role": "user" if i % 2 == 0 else "assistant", "content": msg}
-        for i, (msg, _) in enumerate(history)
-        for msg in [msg[0], msg[1]]
-        if msg
-    ]
-
     payload = {
         "input": user_message,
-        "history": formatted_history,
+        "history": [{"role": "user" if i % 2 == 0 else "assistant", "content": m}
+                    for i, (u, a) in enumerate(history) for m in [u, a] if m],
         "options": {"temperature": 0.2, "max_tokens": 256}
     }
 
@@ -33,61 +23,56 @@ def chat(user_message: str, history: list):
         data = response.json()
 
         if data.get("ok"):
-            bot_reply = data["output"]
-            model_info = data.get("meta", {})
-            mock_tag = " *(mock)*" if model_info.get("mock") else ""
-            bot_reply_display = f"{bot_reply}{mock_tag}"
+            mock_tag = " *(mock)*" if data.get("meta", {}).get("mock") else ""
+            bot_reply = f"{data['output']}{mock_tag}"
             error_msg = ""
         else:
             error = data.get("error", {})
-            bot_reply_display = f"Lo siento, no he podido procesar tu consulta."
+            bot_reply = "Lo siento, no he podido procesar tu consulta."
             error_msg = f"❌ {error.get('message', 'Error desconocido')} [{error.get('code', '')}]"
 
     except requests.exceptions.ConnectionError:
-        bot_reply_display = ""
+        bot_reply = ""
         error_msg = "❌ No se puede conectar con el servidor. ¿Está el backend en marcha?"
     except Exception as e:
-        bot_reply_display = ""
+        bot_reply = ""
         error_msg = f"❌ Error inesperado: {str(e)}"
 
-    history.append((user_message, bot_reply_display))
+    history.append({"role": "user", "content": user_message})
+    history.append({"role": "assistant", "content": bot_reply})
     return history, "", error_msg
 
 
 # ──────────────────────────────────────────────
-# Interfaz Gradio
+# Interfaz Gradio (compatible con Gradio 5+)
 # ──────────────────────────────────────────────
 
-with gr.Blocks(
-    title="TorresMack — Asistente de Seguros",
-    theme=gr.themes.Soft(primary_hue="orange"),
-    css="""
-        .header { text-align: center; padding: 16px 0 8px 0; }
-        .header h1 { font-size: 1.6em; color: #2D2D2D; margin: 0; }
-        .header p  { color: #888; margin: 4px 0 0 0; font-size: 0.9em; }
-        .error-box { color: #c0392b; font-size: 0.88em; min-height: 24px; }
-        footer { display: none !important; }
-    """
-) as demo:
+css = """
+    .header { text-align: center; padding: 16px 0 8px 0; }
+    .header h1 { font-size: 1.6em; color: #2D2D2D; margin: 0; }
+    .header p  { color: #888; margin: 4px 0 0 0; font-size: 0.9em; }
+    .error-box { color: #c0392b; font-size: 0.88em; min-height: 24px; }
+    footer { display: none !important; }
+"""
 
-    # Cabecera
-    with gr.Row(elem_classes="header"):
-        gr.HTML("""
-            <div class="header">
-                <h1>🎭 TorresMack · Asistente de Seguros</h1>
-                <p>Consulta sobre seguros de coche, hogar y artes escénicas</p>
-            </div>
-        """)
+with gr.Blocks(title="TorresMack — Asistente de Seguros") as demo:
 
-    # Chat
+    gr.HTML("""
+        <div class="header" style="text-align:center; padding: 16px 0 8px 0;">
+            <h1 style="font-size:1.6em; color:#2D2D2D; margin:0;">
+                🎭 TorresMack · Asistente de Seguros
+            </h1>
+            <p style="color:#888; margin:4px 0 0 0; font-size:0.9em;">
+                Consulta sobre seguros de coche, hogar y artes escénicas
+            </p>
+        </div>
+    """)
+
     chatbot = gr.Chatbot(
         label="Conversación",
         height=420,
-        bubble_full_width=False,
-        avatar_images=(None, "https://api.dicebear.com/7.x/bottts/svg?seed=torresmack"),
     )
 
-    # Input
     with gr.Row():
         txt_input = gr.Textbox(
             placeholder="Escribe tu consulta aquí... (ej: ¿Qué cubre el seguro de hogar?)",
@@ -97,10 +82,8 @@ with gr.Blocks(
         )
         btn_send = gr.Button("Enviar", variant="primary", scale=1)
 
-    # Área de errores
-    txt_error = gr.Markdown(value="", elem_classes="error-box")
+    txt_error = gr.Markdown(value="")
 
-    # Ejemplos de consultas
     gr.Examples(
         examples=[
             ["¿Qué cubre el seguro a todo riesgo?"],
@@ -112,10 +95,8 @@ with gr.Blocks(
         label="Ejemplos de consultas",
     )
 
-    # Estado
     state_history = gr.State([])
 
-    # Eventos
     btn_send.click(
         fn=chat,
         inputs=[txt_input, state_history],
@@ -127,9 +108,7 @@ with gr.Blocks(
         outputs=[chatbot, txt_input, txt_error],
     )
 
-    # Actualizar estado interno con el historial del chatbot
     chatbot.change(fn=lambda h: h, inputs=[chatbot], outputs=[state_history])
-
 
 if __name__ == "__main__":
     demo.launch(server_port=7860, share=False)
