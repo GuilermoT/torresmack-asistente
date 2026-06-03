@@ -2,11 +2,11 @@ import os
 import time
 import uuid
 import json
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from openai import OpenAI
+from openai import OpenAI, APITimeoutError, APIConnectionError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,12 +24,16 @@ app.add_middleware(
 # Configuración
 # ──────────────────────────────────────────────
 
-LLM_PROVIDER      = os.getenv("LLM_PROVIDER", "mock")
-DEPLOYMENT        = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "DeepSeek-V4-Flash")
-BASE_URL          = os.getenv("AZURE_OPENAI_BASE_URL", "")
-API_KEY           = os.getenv("AZURE_OPENAI_API_KEY", "")
-GROUP_ID          = os.getenv("GROUP_ID", "G5")
-LOG_PATH          = "logs.jsonl"
+LLM_PROVIDER  = os.getenv("LLM_PROVIDER", "mock")
+DEPLOYMENT    = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "DeepSeek-V4-Flash")
+BASE_URL      = os.getenv("AZURE_OPENAI_BASE_URL", "")
+API_KEY       = os.getenv("AZURE_OPENAI_API_KEY", "")
+GROUP_ID      = os.getenv("GROUP_ID", "G5")
+LOG_PATH      = "logs.jsonl"
+
+TIMEOUT_S     = 15      # timeout por llamada en segundos
+MAX_RETRIES   = 1       # reintentos ante timeout o error de conexión
+MAX_TOKENS    = 600     # límite obligatorio de tokens de salida
 
 SYSTEM_PROMPT = """Eres el asistente virtual de TorresMack Correduría de Seguros, especialistas en seguros de coche, hogar y artes escénicas.
 
@@ -53,10 +57,10 @@ SEGUROS QUE GESTIONAMOS:
 CÓMO RESPONDER:
 - Responde siempre en español, con tono profesional pero cercano
 - Sé claro y conciso, sin tecnicismos innecesarios
+- Sé breve: máximo 4-5 puntos por respuesta, sin explicaciones largas. Si el cliente quiere más detalle, que contacte con info@torresmack.com
 - Si la consulta requiere presupuesto, contratación o información muy específica de una póliza, deriva siempre a info@torresmack.com
 - Ante un siniestro, da siempre instrucciones claras de los primeros pasos
 - No respondas sobre seguros que TorresMack no gestiona (salud, vida, mascotas, etc.)
-- Sé breve: máximo 4-5 puntos por respuesta, sin explicaciones largas. Si el cliente quiere más detalle, que contacte con info@torresmack.com
 - Termina siempre ofreciendo ayuda adicional o el contacto si necesitan más información"""
 
 # ──────────────────────────────────────────────
@@ -65,7 +69,7 @@ CÓMO RESPONDER:
 
 class Options(BaseModel):
     temperature: Optional[float] = 0.2
-    max_tokens: Optional[int] = 600
+    max_tokens: Optional[int] = MAX_TOKENS
 
 class PredictRequest(BaseModel):
     input: str
@@ -83,7 +87,7 @@ class PredictResponse(BaseModel):
 # Logger
 # ──────────────────────────────────────────────
 
-def write_log(request_id: str, deployment: str, usage, latency_ms: int, exercise_id: str = "P12-S2"):
+def write_log(request_id: str, deployment: str, usage, latency_ms: int, exercise_id: str = "P12-S4"):
     event = {
         "ts":                time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "group_id":          GROUP_ID,
@@ -120,7 +124,7 @@ def mock_provider(user_input: str) -> dict:
 
 
 # ──────────────────────────────────────────────
-# Provider Foundry (DeepSeek)
+# Provider Foundry (DeepSeek) con reintentos
 # ──────────────────────────────────────────────
 
 def foundry_provider(user_input: str, history: list, options: Options) -> dict:
@@ -128,6 +132,8 @@ def foundry_provider(user_input: str, history: list, options: Options) -> dict:
         base_url=BASE_URL,
         api_key=API_KEY,
         default_headers={"api-key": API_KEY},
+        timeout=TIMEOUT_S,
+        max_retries=MAX_RETRIES,
     )
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -141,7 +147,7 @@ def foundry_provider(user_input: str, history: list, options: Options) -> dict:
     resp = client.chat.completions.create(
         model=DEPLOYMENT,
         messages=messages,
-        max_tokens=min(options.max_tokens or 600, 600),
+        max_tokens=min(options.max_tokens or MAX_TOKENS, MAX_TOKENS),
         temperature=options.temperature or 0.2,
     )
 
@@ -169,6 +175,7 @@ def foundry_provider(user_input: str, history: list, options: Options) -> dict:
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
+    # Validación de entrada
     if not req.input or not req.input.strip():
         return PredictResponse(
             ok=False,
@@ -187,6 +194,26 @@ def predict(req: PredictRequest):
 
         return PredictResponse(ok=result["ok"], output=result["output"], meta=result["meta"])
 
+    except APITimeoutError:
+        return PredictResponse(
+            ok=False,
+            error={
+                "code":    "TIMEOUT",
+                "message": "El servicio ha tardado demasiado en responder. Inténtalo de nuevo.",
+                "details": {"timeout_s": TIMEOUT_S}
+            }
+        )
+
+    except APIConnectionError:
+        return PredictResponse(
+            ok=False,
+            error={
+                "code":    "CONNECTION_ERROR",
+                "message": "No se puede conectar con el servicio de IA. Inténtalo de nuevo.",
+                "details": {}
+            }
+        )
+
     except Exception as e:
         return PredictResponse(
             ok=False,
@@ -200,4 +227,10 @@ def predict(req: PredictRequest):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "provider": LLM_PROVIDER, "deployment": DEPLOYMENT}
+    return {
+        "status":     "ok",
+        "provider":   LLM_PROVIDER,
+        "deployment": DEPLOYMENT,
+        "timeout_s":  TIMEOUT_S,
+        "max_tokens": MAX_TOKENS,
+    }
