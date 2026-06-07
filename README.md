@@ -242,8 +242,9 @@ Medidas sobre **39 llamadas reales** a DeepSeek-V4-Flash:
 | Parámetro | Valor |
 |---|---|
 | Tokens medios por request | 651 tokens |
-| Precio por token | 0,0003 € / 1.000 tokens |
-| **Coste estimado por 1k requests** | **≈ 0,20 €** |
+| Precio por token | 0,0003 € por token |
+| Coste por request (media) | 651 × 0,0003 € = 0,1953 € |
+| **Coste estimado por 1k requests** | **≈ 195,3 €** |
 
 ---
 
