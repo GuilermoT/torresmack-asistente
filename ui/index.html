@@ -113,11 +113,16 @@
     width: 38px;
     height: 38px;
     border-radius: 50%;
-    background: #B5541A;
+    background: linear-gradient(135deg, #B5541A, #8B3A10);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-family: 'Playfair Display', serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: white;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 8px rgba(181,84,26,0.4);
     flex-shrink: 0;
   }
   .chat-header-info { flex: 1; }
@@ -341,7 +346,7 @@
 <!-- Chat panel -->
 <div id="chat-panel">
   <div class="chat-header">
-    <div class="chat-avatar">🎭</div>
+    <div class="chat-avatar">TM</div>
     <div class="chat-header-info">
       <div class="chat-header-name">Asistente TorresMack</div>
       <div class="chat-header-status">
