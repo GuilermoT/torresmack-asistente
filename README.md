@@ -309,12 +309,6 @@ Medidas sobre **39 llamadas reales** a DeepSeek-V4-Flash:
 
 ---
 
-## Contexto académico
-
-Proyecto desarrollado como trabajo final del módulo de Azure AI en el ciclo de **Desarrollo de Aplicaciones Web con especialización en IA y Big Data**. El caso de uso está basado en un negocio real — Torres Jack Correduría de Seguros (A Coruña).
-
----
-
 ## Licencia
 
 MIT © Guillermo Torres Lamas
