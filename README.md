@@ -1,24 +1,51 @@
-# TorresMack — Asistente de Seguros 🎭
+# TorresMack · Asistente de Seguros 🎭
 
-Chatbot de atención al cliente para TorresMack Correduría de Seguros.
-Responde dudas sobre seguros de **coche**, **hogar** y **artes escénicas** usando RAG (Retrieval-Augmented Generation) con documentos reales de la correduría.
+![Python](https://img.shields.io/badge/Python-3.13-blue?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![ChromaDB](https://img.shields.io/badge/ChromaDB-RAG-orange)
+![Azure](https://img.shields.io/badge/Azure-AI%20Foundry-0078D4?logo=microsoftazure&logoColor=white)
+![DeepSeek](https://img.shields.io/badge/DeepSeek-V4--Flash-6B3FA0)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-> Práctica 12 · Guillermo Torres Lamas (G5)
+Asistente virtual de atención al cliente para **TorresMack Correduría de Seguros**.
+Responde dudas sobre seguros de **coche**, **hogar** y **artes escénicas** usando RAG con documentos reales de la correduría, y deriva al agente humano cuando la consulta lo requiere.
+
+---
+
+## Demo
+
+[![Demo TorresMack Asistente](ui/widget_screenshot.png)](https://www.loom.com/share/9b2b2156e3f14c96b17b8ad522950e1e)
+
+▶️ [Ver demo en vivo](https://www.loom.com/share/9b2b2156e3f14c96b17b8ad522950e1e) — widget flotante respondiendo con información real de las pólizas.
+
+---
+
+## Tecnologías
+
+| Capa | Tecnología |
+|---|---|
+| Backend | FastAPI · Uvicorn · Python 3.13 |
+| RAG | ChromaDB · sentence-transformers (`paraphrase-multilingual-MiniLM-L12-v2`) |
+| Modelo | DeepSeek-V4-Flash vía Azure AI Foundry |
+| UI | HTML/JS widget flotante · Gradio (alternativa) |
+| Tests | pytest |
+| Logs | JSONL por llamada (tokens, latencia, request_id) |
 
 ---
 
 ## Arquitectura
 
 ```
-Usuario (index.html)
+Usuario (widget flotante)
         ↓
-POST /predict (FastAPI)
+POST /predict  (FastAPI)
         ↓
 RAG — ChromaDB + sentence-transformers
+(recupera fragmentos relevantes de los documentos)
         ↓
-DeepSeek-V4-Flash (Azure AI Foundry)
+DeepSeek-V4-Flash  (Azure AI Foundry)
         ↓
-Respuesta + logs.jsonl
+Respuesta  +  logs.jsonl
 ```
 
 ---
@@ -26,7 +53,7 @@ Respuesta + logs.jsonl
 ## Estructura del proyecto
 
 ```
-torresmack-chatbot/
+torresmack-asistente/
 ├── backend/
 │   ├── main.py              # API FastAPI con POST /predict
 │   ├── rag.py               # Módulo RAG (ChromaDB + embeddings)
@@ -43,6 +70,7 @@ torresmack-chatbot/
 │   ├── artes_escenicas.txt
 │   ├── siniestros_coche.txt
 │   └── siniestros_hogar.txt
+├── LICENSE
 ├── .gitignore
 └── README.md
 ```
@@ -54,8 +82,8 @@ torresmack-chatbot/
 ### 1. Clona el repositorio
 
 ```bash
-git clone https://github.com/GuilermoT/torresmack-chatbot.git
-cd torresmack-chatbot
+git clone https://github.com/GuilermoT/torresmack-asistente.git
+cd torresmack-asistente
 ```
 
 ### 2. Instala dependencias del backend
@@ -90,7 +118,7 @@ cp backend/.env.example backend/.env
 | `AZURE_OPENAI_BASE_URL` | URL base para las llamadas al modelo | Solo con foundry |
 | `AZURE_OPENAI_DEPLOYMENT_NAME` | Nombre del deployment (`DeepSeek-V4-Flash`) | Solo con foundry |
 | `AZURE_OPENAI_API_KEY` | Clave de API de Azure | Solo con foundry |
-| `GROUP_ID` | Identificador del grupo (G1..G6) | No (default: G5) |
+| `GROUP_ID` | Identificador del grupo para logs | No |
 
 > ⚠️ Nunca subas el `.env` al repositorio — está excluido en `.gitignore`
 
@@ -110,7 +138,7 @@ La primera vez descarga el modelo de embeddings (~470MB). Verás:
 [RAG] Índice listo — 165 fragmentos desde .../data
 ```
 
-Disponible en: http://localhost:8000
+Disponible en: http://localhost:8000  
 Documentación: http://localhost:8000/docs
 
 ### Lanzar la UI — widget flotante (recomendado)
@@ -205,7 +233,6 @@ Cada llamada al modelo se registra en `backend/logs.jsonl`:
 {
   "ts": "2026-06-07T13:44:00+0200",
   "group_id": "G5",
-  "exercise_id": "P12-S5",
   "request_id": "uuid...",
   "deployment": "DeepSeek-V4-Flash",
   "prompt_tokens": 528,
@@ -246,6 +273,8 @@ Medidas sobre **39 llamadas reales** a DeepSeek-V4-Flash:
 | Coste por request (media) | 651 × 0,0003 € = 0,1953 € |
 | **Coste estimado por 1k requests** | **≈ 195,3 €** |
 
+> Nota: precio calculado con supuesto académico de 0,0003€/token. En producción real con DeepSeek-V4-Flash los precios de mercado son significativamente menores.
+
 ---
 
 ## Casos de prueba
@@ -262,4 +291,30 @@ Medidas sobre **39 llamadas reales** a DeepSeek-V4-Flash:
 | 08 | ¿Qué es la responsabilidad civil y para qué sirve? | Resolver | General |
 | 09 | Quiero contratar una póliza, ¿cuánto cuesta? | Derivar | General |
 | 10 | ¿Ofrecéis seguro de vida o de salud? | Fuera de scope | General |
-| 11–25 | Ver tests/smoke.jsonl | Varios | Varios |
+| 11 | ¿Cómo abro un parte de coche con Mapfre? | Resolver | Coche |
+| 12 | ¿Cuánto tiempo tengo para comunicar un siniestro de hogar? | Resolver | Hogar |
+| 13 | ¿Qué suma asegurada tiene la póliza de RC para teatro? | Resolver | Artes |
+| 14 | ¿El seguro de hogar cubre el robo dentro de casa? | Resolver | Hogar |
+| 15 | ¿Trabajáis con alguna aseguradora en concreto? | Resolver | General |
+| 16 | ¿La póliza de artes escénicas cubre el local de ensayo? | Resolver | Artes |
+| 17 | Tengo un accidente de coche, ¿qué documentación necesito? | Resolver | Coche |
+| 18 | ¿El seguro cubre si un espectador se lesiona en una función? | Resolver | Artes |
+| 19 | ¿Puedo contratar el seguro de teatro online? | Derivar | Artes |
+| 20 | ¿Qué es una franquicia en un seguro? | Resolver | General |
+| 21 | ¿El seguro de hogar cubre daños por inundación? | Resolver | Hogar |
+| 22 | Hola, buenos días | Resolver | General |
+| 23 | ¿Cuándo se renueva la póliza de artes escénicas? | Resolver | Artes |
+| 24 | ¿Hacéis seguros para grupos de teatro aficionados? | Resolver | Artes |
+| 25 | ¿Puedo cancelar mi póliza cuando quiera? | Resolver | General |
+
+---
+
+## Contexto académico
+
+Proyecto desarrollado como trabajo final del módulo de Azure AI en el ciclo de **Desarrollo de Aplicaciones Web con especialización en IA y Big Data**. El caso de uso está basado en un negocio real — Torres Jack Correduría de Seguros (A Coruña).
+
+---
+
+## Licencia
+
+MIT © Guillermo Torres Lamas
